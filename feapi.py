@@ -1,4 +1,4 @@
-
+import ConfigParser
 import os
 import requests
 import sys
@@ -10,22 +10,22 @@ import hashlib
 import sqlite3
 import logging
 import logging.handlers
-
 from lxml import etree
 
 requests.packages.urllib3.disable_warnings()
+config = ConfigParser.ConfigParser()
+config.read(".feapi.ini")
 
-un = 'username'
-pw = 'password'
-mas = '10.1.2.3'
-baseUrl = 'https://%s:443/wsapis/v1.1.0/' % mas
-baseDir = '/opt/app/fe_share'
-feDirs = ['win10x64', 'win7-sp1', 'win7x64-sp1', 'winxp-sp3']
-resultDirs = ['Good', 'Bad', 'Unk', 'Pending']
-dbDir = '/opt/app/fe_db_and_log'
-db = 'analysis.db'
-logDir = '/opt/app/fe_db_and_log'
-logFile = 'analysis.log'
+un = config.get('AX Config', 'un')
+pw = config.get('AX Config', 'pw)
+mas = config.get('AX Config', 'mas')
+baseUrl = config.get('AX Config', 'baseURL')
+feDirs = config.get('AX Config', 'feDirs')
+resultDirs = config.get('AX Config', 'feDirs')
+dbDir = config.get('AX Config', 'dbDir')
+db = config.get('AX Config', 'db')
+logDir = config.get('AX Config', 'logDir')
+logFile = config.get('AX Config', 'logFile')
 
 NS = '{http://www.fireeye.com/alert/2013/AlertSchema}'
 
