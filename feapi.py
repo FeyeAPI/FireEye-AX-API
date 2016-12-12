@@ -17,15 +17,24 @@ config = ConfigParser.ConfigParser()
 config.read(".feapi.ini")
 
 un = config.get('AX Config', 'un')
-pw = config.get('AX Config', 'pw)
+pw = config.get('AX Config', 'pw')
 mas = config.get('AX Config', 'mas')
 baseUrl = config.get('AX Config', 'baseURL')
-feDirs = config.get('AX Config', 'feDirs')
-resultDirs = config.get('AX Config', 'feDirs')
-dbDir = config.get('AX Config', 'dbDir')
-db = config.get('AX Config', 'db')
-logDir = config.get('AX Config', 'logDir')
-logFile = config.get('AX Config', 'logFile')
+
+baseDir = config.get('Local Config', 'baseDir')
+feDirs = config.get('Local Config', 'feDirs')
+resultDirs = config.get('Local Config', 'feDirs')
+dbDir = config.get('Local Config', 'dbDir')
+db = config.get('Local Config', 'db')
+logDir = config.get('Local Config', 'logDir')
+logFile = config.get('Local Config', 'logFile')
+
+application = config.get('Payload Config', 'application')
+timeout = config.get('Payload Config', 'timeout')
+priority = config.get('Payload Config', 'priority')
+analysistype = config.get('Payload Config', 'analysistype')
+force = config.get('Payload Config', 'force')
+prefetch = config.get('Payload Config', 'prefetch')
 
 NS = '{http://www.fireeye.com/alert/2013/AlertSchema}'
 
@@ -45,6 +54,7 @@ def instantiate_logs():
 
 
 def setup():
+    global e, e
     try:
         os.makedirs(logDir)
     except OSError, e:
@@ -53,25 +63,26 @@ def setup():
     mylogger = instantiate_logs()
     mylogger.info("Instantiated %s in %s" % (logFile, logDir))
 
-    for dir in feDirs:
-        midDir = os.path.join(baseDir, dir)
+    for adirectory in feDirs:
+        middir = os.path.join(baseDir, adirectory)
         for subdir in resultDirs:
-            final = os.path.join(midDir, subdir)
+            final = os.path.join(middir, subdir)
             try:
                 os.makedirs(final)
-                mylogger.info("Setup created directory %s" % (final,))
+                mylogger.info(u"Setup created directory {0:s}".format(final))
             except OSError, e:
                 if e.errno != errno.EEXIST:
                     mylogger.error(e)
                     raise
     try:
         os.makedirs(dbDir)
-        mylogger.info("Setup created directory %s" % (dbDir,))
+        mylogger.info(u"Setup created directory {0:s}".format(dbDir))
     except OSError, e:
         if e.errno != errno.EEXIST:
             mylogger.error(e)
             raise
     try:
+        assert isinstance(dbDir, str)
         database = os.path.join(dbDir, db)
         conn = sqlite3.connect(database)
         conn.execute('''CREATE TABLE files
@@ -86,9 +97,9 @@ def setup():
         malware_name TEXT,
         analysis_url TEXT);''')
         conn.close()
-        mylogger.info("%s database with 'files' table created" % (database))
-    except:
-        mylogger.error("Failed creating %s" % (database))
+        mylogger.info("%s database with 'files' table created" % database)
+    except e:
+        mylogger.error("Failed creating %s" % database)
         mylogger.error(e)
 
 
@@ -102,10 +113,10 @@ def login(un, pw):
         mylogger.error("%s failed logging in to %s" % (un, mas))
         sys.exit(1)
     elif int(c.status_code) == 503:
-        mylogger.error("%s Web Services API not enabled.  Please enable and try again." % (mas))
+        mylogger.error("%s Web Services API not enabled.  Please enable and try again." % mas)
         sys.exit(1)
     else:
-        mylogger.error("Log in to %s failed for some unspecified reason." % (mas))
+        mylogger.error("Log in to %s failed for some unspecified reason." % mas)
         sys.exit(1)
 
 
@@ -114,10 +125,10 @@ def logout(token):
     reqUrl = baseUrl + 'auth/logout?'
     c = requests.post(reqUrl, headers=auth_header, verify=False)
     if int(c.status_code) == 204:
-        mylogger.info("Successfully logged out of %s." % (mas))
+        mylogger.info("Successfully logged out of %s." % mas)
         return "Logged out"
     else:
-        mylogger.info("Logout from %s failed for some unspecified reason" % (mas))
+        mylogger.info(u"Logout from {0:s} failed for some unspecified reason".format(mas))
 
 
 def get_fe_config():
@@ -155,7 +166,7 @@ def submit_for_analysis(token, fqfn):
         if raTime >= datetime.datetime.now() or row[1] == 'pending':
             mylogger.warn(
                 "Skipping analysis of %s because existing analysis less than 1 day old or is currently in process." % (
-                fqfn,))
+                    fqfn,))
             mylogger.warn("%s eligible for reanalysis at %s" % (fqfn, str(raTime)))
             os.remove(fqfn)
             mylogger.warn("Removed/Deleted %s from analysis queue" % (fqfn,))
@@ -167,9 +178,9 @@ def submit_for_analysis(token, fqfn):
         'filename': fName,
     }
     payload[
-        'options'] = '{"application":"0","timeout":"500","priority":"0","profiles":["%s"],"analysistype":"2", "force":"true","prefetch":"1"}' % (
-    profile)
-
+        'options'] = '{"application":"%s","timeout":"%d","priority":"%d","profiles":["%s"],' \
+                     '"analysistype":"%d", "force":"%s","prefetch":"%d"}' % (application, timeout, priority, profile,
+                                                                             analysistype, force, prefetch)
     submitted_file = {'file': open(fqfn, 'rb')}
     reqUrl = baseUrl + 'submissions'
 
@@ -187,7 +198,7 @@ def submit_for_analysis(token, fqfn):
                     (hash, filename, start, engine, analysis_id, result)
                     values (?,?,?,?,?,?)""",
                      (fHash, dstFileName, now, profile, analysis_id, 'pending')
-                     );
+                     )
         conn.commit()
         mylogger.info("Submitted %s to profile %s for analysis." % (fqfn, profile))
 
@@ -206,10 +217,10 @@ def process_results(alert_obj, fqfn):
     compDate = str(datetime.datetime.now())
 
     if alert_obj.attrib['severity'] == 'majr':
-        mylogger.info("%s received a verdict of malicious." % (fqfn,))
+        mylogger.info("%s received a verdict of malicious." % fqfn)
         fileResult = 'Bad'
     elif alert_obj.attrib['severity'] == 'minr':
-        mylogger.info("%s received a verdict of clean." % (fqfn,))
+        mylogger.info("%s received a verdict of clean." % fqfn)
         fileResult = 'Good'
     else:
         mylogger.warn("%s received an unanticipated verdict of: %s" % (fqfn, str(alert_obj.attrib['severity'])))
@@ -235,7 +246,7 @@ def process_results(alert_obj, fqfn):
         if fileHash != fHash:
             mylogger.error(
                 "Hash returned in analysis results (%s) does not equal hash of file on disk (%s).  Exiting program." % (
-                fileHash, fHash))
+                    fileHash, fHash))
             sys.exit(1)
 
     os.rename(fqfn, destFileName)
@@ -298,17 +309,19 @@ def check_submission(token, analysis_id, fqfn):
         elif subStatus == "In Progress":
             mylogger.info("check_submission request still pending for %s using analysis_id %s" % (fqfn, analysis_id))
         else:
-            mylogger.warn("check_submission request for %s, analysis_id %s returned an unexpected value: %s" % (
-            fqfn, analysis_id, str(c.text)))
+            mylogger.warn(
+                "check_submission request for %s, analysis_id %s returned an unexpected value: %s" % (
+                    fqfn, analysis_id, str(c.text)))
             mylogger.warn("%s" % (c.json()))
     elif int(c.status_code) == 401:
         mylogger.warn("check_submission request unsuccessful due to incorrect session token (not logged in)")
     elif int(c.status_code) == 404:
         mylogger.warn("check_submission request unsuccessful for %s due to incorrect/unknown analysis_d: %s" % (
-        fqfn, analysis_id))
+            fqfn, analysis_id))
     else:
-        mylogger.warn("check_submission for %s, analysis_id returned an unexpected status_code: %s" % (
-        fqfn, analysis_id, str(c.status_code)))
+        mylogger.warn(
+            "check_submission for %s, analysis_id %s returned an unexpected status_code: %s" % (
+                fqfn, analysis_id, str(c.status_code)))
 
 
 def check_pending_analyses(token):
@@ -323,11 +336,11 @@ def check_pending_analyses(token):
 
 def submit_new_files(token):
     # for fileName found in base_dir/fe_dirs that aren't dirs
-    for dir in feDirs:
-        searchDir = os.path.join(baseDir, dir)
+    for adirectory in feDirs:
+        searchDir = os.path.join(baseDir, adirectory)
         files_to_process = os.listdir(searchDir)
         for fn in files_to_process:
-            fqfn = os.path.join(baseDir, dir, fn)
+            fqfn = os.path.join(baseDir, adirectory, fn)
             if os.path.isfile(fqfn):
                 mylogger.info("Submitting %s for analysis." % (fqfn,))
                 submit_for_analysis(token, fqfn)
