@@ -19,11 +19,11 @@ config.read(".feapi.ini")
 un = config.get('AX Config', 'un')
 pw = config.get('AX Config', 'pw')
 mas = config.get('AX Config', 'mas')
-baseUrl = config.get('AX Config', 'baseURL')
+baseUrl = 'https://%s:443/wsapis/v1.1.0/' % mas
 
 baseDir = config.get('Local Config', 'baseDir')
 feDirs = config.get('Local Config', 'feDirs')
-resultDirs = config.get('Local Config', 'feDirs')
+resultDirs = config.get('Local Config', 'resultDirs')
 dbDir = config.get('Local Config', 'dbDir')
 db = config.get('Local Config', 'db')
 logDir = config.get('Local Config', 'logDir')
@@ -54,7 +54,6 @@ def instantiate_logs():
 
 
 def setup():
-    global e, e
     try:
         os.makedirs(logDir)
     except OSError, e:
@@ -62,10 +61,9 @@ def setup():
             raise
     mylogger = instantiate_logs()
     mylogger.info("Instantiated %s in %s" % (logFile, logDir))
-
-    for adirectory in feDirs:
+    for adirectory in feDirs.split(',',):
         middir = os.path.join(baseDir, adirectory)
-        for subdir in resultDirs:
+        for subdir in resultDirs.split(',',):
             final = os.path.join(middir, subdir)
             try:
                 os.makedirs(final)
@@ -84,23 +82,29 @@ def setup():
     try:
         assert isinstance(dbDir, str)
         database = os.path.join(dbDir, db)
-        conn = sqlite3.connect(database)
-        conn.execute('''CREATE TABLE files
-        (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        hash TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        start INT NOT NULL,
-        complete INT,
-        engine TEXT,
-        analysis_id TEXT,
-        result TEXT,
-        malware_name TEXT,
-        analysis_url TEXT);''')
-        conn.close()
-        mylogger.info("%s database with 'files' table created" % database)
+        if not os.path.exists(database):
+            conn = sqlite3.connect(database)
+            conn.execute('''CREATE TABLE files
+            (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            hash TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            start INT NOT NULL,
+            complete INT,
+            engine TEXT,
+            analysis_id TEXT,
+            result TEXT,
+            malware_name TEXT,
+            analysis_url TEXT);''')
+            conn.close()
+            mylogger.info("%s database with 'files' table created" % database)
+        else:
+            mylogger.info("Skipped creating %s because it already exists." % database)
     except e:
         mylogger.error("Failed creating %s" % database)
         mylogger.error(e)
+
+    mylogger.handlers[0].close()
+    mylogger.removeHandler(mylogger)
 
 
 def login(un, pw):
@@ -150,6 +154,7 @@ def calc_hash(fileName):
             hasher.update(buf)
             buf = afile.read(BLOCKSIZE)
     fHash = hasher.hexdigest()
+    afile.close()
     mylogger.info("md5 hash of %s = %s" % (fileName, fHash))
     return fHash
 
@@ -178,16 +183,19 @@ def submit_for_analysis(token, fqfn):
         'filename': fName,
     }
     payload[
-        'options'] = '{"application":"%s","timeout":"%d","priority":"%d","profiles":["%s"],' \
-                     '"analysistype":"%d", "force":"%s","prefetch":"%d"}' % (application, timeout, priority, profile,
+        'options'] = '{"application":"%s","timeout":"%s","priority":"%s","profiles":["%s"],' \
+                     '"analysistype":"%s", "force":"%s","prefetch":"%s"}' % (application, timeout, priority, profile,
                                                                              analysistype, force, prefetch)
-    submitted_file = {'file': open(fqfn, 'rb')}
+
     reqUrl = baseUrl + 'submissions'
 
     mylogger.info(fName)
     mylogger.info(payload)
-    c = requests.post(reqUrl, headers=auth_header, verify=False, data=payload, files=submitted_file)
-    mylogger.info(c.text)
+    with open(fqfn, 'rb') as file_content:
+        submitted_file = {'file': file_content}
+        c = requests.post(reqUrl, headers=auth_header, verify=False, data=payload, files=submitted_file)
+        mylogger.info("File Submission ID = %s" % c.text)
+
 
     if int(c.status_code) == 200:
         analysis_id = json.loads(c.text)[0]['ID']
@@ -336,7 +344,7 @@ def check_pending_analyses(token):
 
 def submit_new_files(token):
     # for fileName found in base_dir/fe_dirs that aren't dirs
-    for adirectory in feDirs:
+    for adirectory in feDirs.split(',',):
         searchDir = os.path.join(baseDir, adirectory)
         files_to_process = os.listdir(searchDir)
         for fn in files_to_process:
