@@ -1,4 +1,5 @@
 import ConfigParser
+import argparse
 import os
 import requests
 import sys
@@ -45,7 +46,7 @@ def instantiate_logs():
     global mylogger
     mylogger = logging.getLogger(__name__)
     mylogger.setLevel(logging.DEBUG)
-    myformatter = logging.Formatter("%(asctime)s - %(funcName)s - %(levelname)s - %(message)s")
+    myformatter = logging.Formatter('%(asctime)s - %(funcName)s - %(levelname)s - %(message)s')
     myhandler = logging.handlers.RotatingFileHandler(fq_log_name, maxBytes=10485760, backupCount=5, )
     myhandler.setLevel(logging.DEBUG)
     myhandler.setFormatter(myformatter)
@@ -61,9 +62,9 @@ def setup():
             raise
     mylogger = instantiate_logs()
     mylogger.info("Instantiated %s in %s" % (logFile, logDir))
-    for adirectory in feDirs.split(',',):
+    for adirectory in feDirs.split(',', ):
         middir = os.path.join(baseDir, adirectory)
-        for subdir in resultDirs.split(',',):
+        for subdir in resultDirs.split(',', ):
             final = os.path.join(middir, subdir)
             try:
                 os.makedirs(final)
@@ -79,6 +80,7 @@ def setup():
         if e.errno != errno.EEXIST:
             mylogger.error(e)
             raise
+    # noinspection PyBroadException
     try:
         assert isinstance(dbDir, str)
         database = os.path.join(dbDir, db)
@@ -99,9 +101,9 @@ def setup():
             mylogger.info("%s database with 'files' table created" % database)
         else:
             mylogger.info("Skipped creating %s because it already exists." % database)
-    except e:
+    except:
         mylogger.error("Failed creating %s" % database)
-        mylogger.error(e)
+        mylogger.error(sys.exc_info()[0])
 
     mylogger.handlers[0].close()
     mylogger.removeHandler(mylogger)
@@ -179,26 +181,21 @@ def submit_for_analysis(token, fqfn):
 
     auth_header = {'X-FeApi-Token': token}
 
-    payload = {
-        'filename': fName,
-    }
-    payload[
-        'options'] = '{"application":"%s","timeout":"%s","priority":"%s","profiles":["%s"],' \
-                     '"analysistype":"%s", "force":"%s","prefetch":"%s"}' % (application, timeout, priority, profile,
-                                                                             analysistype, force, prefetch)
+    payload = {'filename': fName, 'options': '{"application":"%s","timeout":"%s","priority":"%s","profiles":["%s"],'
+                                             '"analysistype":"%s", "force":"%s","prefetch":"%s"}' % (
+                                                 application, timeout, priority, profile, analysistype, force,
+                                                 prefetch)}
 
     reqUrl = baseUrl + 'submissions'
-
     mylogger.info(fName)
     mylogger.info(payload)
     with open(fqfn, 'rb') as file_content:
         submitted_file = {'file': file_content}
         c = requests.post(reqUrl, headers=auth_header, verify=False, data=payload, files=submitted_file)
-        mylogger.info("File Submission ID = %s" % c.text)
-
 
     if int(c.status_code) == 200:
         analysis_id = json.loads(c.text)[0]['ID']
+        mylogger.info("File Analysis ID = %s" % analysis_id)
         now = str(datetime.datetime.now())
         dstFileName = os.path.join(profileDir, 'Pending', fName)
         os.rename(fqfn, dstFileName)
@@ -285,7 +282,6 @@ def get_results(token, analysis_id, fqfn):
         mylogger.info("Analysis of %s completed." % (fqfn,))
         foo = c.content.replace('encoding="UTF-8"', '')
         tree = etree.parse(StringIO(foo))
-        # tree = etree.parse(StringIO(c.content))
         NS = '{http://www.fireeye.com/alert/2013/AlertSchema}'
         # 'a' will be an alert Element we can iterate over
         for a in tree.iter(NS + 'alert'):
@@ -344,7 +340,7 @@ def check_pending_analyses(token):
 
 def submit_new_files(token):
     # for fileName found in base_dir/fe_dirs that aren't dirs
-    for adirectory in feDirs.split(',',):
+    for adirectory in feDirs.split(',', ):
         searchDir = os.path.join(baseDir, adirectory)
         files_to_process = os.listdir(searchDir)
         for fn in files_to_process:
@@ -355,6 +351,13 @@ def submit_new_files(token):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--setup", help="Option to create directories and databases needed for the tool")
+    args = parser.parse_args()
+
+    if args.setup:
+        setup()
+
     mylogger = instantiate_logs()
     token = login(un, pw)
     database = os.path.join(dbDir, db)

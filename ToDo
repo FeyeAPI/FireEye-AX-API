@@ -1,0 +1,6 @@
+1.  Parse output of get_config to build dynamic list of available Malware analysis engines
+2.  Use that list during setup.
+3.  Before submitting a file, verify that the engine exists on the FE AX
+4.  Change ~line 250 where hash of file doesn't match hash returned by analysis results to move file to Unk folder
+    and mark the database accordingly.
+5.
